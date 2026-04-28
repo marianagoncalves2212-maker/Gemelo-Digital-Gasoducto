@@ -66,6 +66,12 @@ SMYS_ACERO = {
     "X60": 60000.0
 }
 
+# Factor de costo relativo según el grado del acero (X52 es la base)
+COSTO_GRADO = {
+    "X52": 1.00,
+    "X60": 1.15
+}
+
 # 1.4 Funciones auxiliares de interfaz
 def tarjeta_color(titulo: str, valor: str, color_fondo: str):
     """
@@ -129,12 +135,15 @@ def calcular_compresion(p_in: float, p_out: float, t_in: float, q_diseno: float)
     return hp_req, t_out
 
 # 2.4 Evaluación económica
-def calcular_tac(diametro: float, hp_total: float, tasa_interes: float, costo_energia: float) -> tuple[float, float, float]:
+def calcular_tac(diametro: float, hp_total: float, tasa_interes: float, costo_energia: float, grado_acero: str) -> tuple[float, float, float]:
     """
     Estima el Costo Total Anualizado (TAC).
     Considera la inversión inicial (CAPEX) amortizada y los costos operativos (OPEX).
     """
-    costo_tuberia_total = ESPECIFICACIONES_TUBERIA[diametro]["costo"] * (params.longitud_total * 1000)
+    costo_base_metro = ESPECIFICACIONES_TUBERIA[diametro]["costo"]
+    factor_material = COSTO_GRADO[grado_acero]
+    
+    costo_tuberia_total = (costo_base_metro * factor_material) * (params.longitud_total * 1000)
     costo_compresores = hp_total * params.costo_hp_inst
     capex_total = costo_tuberia_total + costo_compresores
     
@@ -152,10 +161,13 @@ def calcular_tac(diametro: float, hp_total: float, tasa_interes: float, costo_en
 # 2.5 Bucle principal de simulación del gasoducto
 # Usamos caché para que el modelo solo se recalcule si cambian las entradas del usuario
 @st.cache_data
-def simular_gasoducto(diametro: float, n_estaciones: int, q_diseno: float, tasa_interes: float, costo_energia: float):
+def simular_gasoducto(diametro: float, n_estaciones: int, q_diseno: float, tasa_interes: float, costo_energia: float, grado_acero: str):
     """Orquesta la simulación nodo por nodo a lo largo de todo el gasoducto."""
     tramos = n_estaciones + 1
     longitud_tramo = params.longitud_total / tramos
+    
+    presiones = [params.p_inicial]
+    distancias = [0.0]
     
     presion_actual = params.p_inicial
     potencia_total = 0.0
@@ -188,7 +200,7 @@ def simular_gasoducto(diametro: float, n_estaciones: int, q_diseno: float, tasa_
             perfil_presion.append(presion_actual)    
             
     # 3. Consolidación financiera tras finalizar el ruteo
-    tac_final, capex_a, opex_a = calcular_tac(diametro, potencia_total, tasa_interes, costo_energia)
+    tac_final, capex_a, opex_a = calcular_tac(diametro, potencia_total, tasa_interes, costo_energia, grado_acero)
     
     return presion_actual, potencia_total, temperatura_max_alcanzada, tac_final, capex_a, opex_a, perfil_distancia, perfil_presion
 
@@ -228,7 +240,8 @@ st.markdown("### Indicadores clave de desempeño")
 try:
     p_final, hp_tot, t_max_k, tac, capex, opex, distancias, presiones = simular_gasoducto(
         diametro=diametro_input, n_estaciones=n_estaciones_input, 
-        q_diseno=q_diseno_input, tasa_interes=tasa_interes_input, costo_energia=costo_energia_input
+        q_diseno=q_diseno_input, tasa_interes=tasa_interes_input, costo_energia=costo_energia_input,
+        grado_acero=grado_acero_input
     )
     
     # Post-procesamiento de unidades
